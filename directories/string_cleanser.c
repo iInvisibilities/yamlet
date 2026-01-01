@@ -1,10 +1,6 @@
 #include <string.h>
 
 char *cleanse(char *input) {
-    if (input[0] == '/') {
-        input++;
-    }
-
     char *p;
     while ((p = strstr(input, ".")) != NULL) {
         memmove(p, p + 2, strlen(p + 2) + 1);
@@ -17,6 +13,10 @@ char *cleanse(char *input) {
     int len = strlen(input);
     if (len > 0 && input[len - 1] == '/') {
         input[len - 1] = '\0';
+    }
+
+    if (input[0] == '/') {
+        input++;
     }
 
     return input;
