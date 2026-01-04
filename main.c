@@ -9,6 +9,11 @@
 #include "presets.h"
 #include "directories/string_cleanser.c"
 #include "directories/maker.c"
+#include "schema/yamlet_yml.c"
+
+
+void load_modules(void);
+void load_endpoints(struct yamlet_configuration *init_config);
 
 static const cyaml_config_t config = {
 	.log_fn = cyaml_log,
@@ -17,7 +22,6 @@ static const cyaml_config_t config = {
 };
 
 int main(void) {
-  #include "schema/yamlet_yml.c"
   struct yamlet_configuration *init_config;
   puts("Loading "INIT_FNAME"...");
   cyaml_err_t err = cyaml_load_file(INIT_FNAME, &config, &top_schema, (cyaml_data_t **)&init_config, NULL);
@@ -27,7 +31,19 @@ int main(void) {
   }
 
   printf("Starting server on port %u\n", init_config -> port);
+  load_modules();
+  load_endpoints(init_config);
+  return 0;
+}
+
+void load_modules(void) {
+  puts("Loading modules...");
+  
+}
+
+void load_endpoints(struct yamlet_configuration *init_config) {
   char current_endpoint[MAX_ROUTE_LENGTH];
+  puts("Loading endpoints...");
   for (int route_n = 0; route_n < init_config -> routes_count; route_n++) {
     (init_config -> routes)[route_n] = cleanse((init_config -> routes)[route_n]);
     strncpy(current_endpoint, (init_config -> routes)[route_n], MAX_ROUTE_LENGTH - 1);
@@ -39,5 +55,4 @@ int main(void) {
       continue;
     }
   }
-  return 0;
 }
