@@ -1,0 +1,2 @@
+authenticator_module: "python3 modules/authenticator.py"
+some_module: "node modules/some_module.js"
