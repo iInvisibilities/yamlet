@@ -16,11 +16,13 @@
 #include "directories/maker.c"
 #include "schema/yamlet_yml.c"
 
+void unload_cyaml(void);
 void load_shared_buffer(void);
 void unload_shared_buffer(void);
 void load_modules(void);
-void load_endpoints(struct yamlet_configuration *init_config);
+void load_endpoints(struct yamlet_configuration*);
 
+struct yamlet_configuration *init_config;
 static const cyaml_config_t config = {
 	.log_fn = cyaml_log,
 	.mem_fn = cyaml_mem,
@@ -31,7 +33,8 @@ int shm_fd;
 void *shared_memory_buffer;
 
 int main(void) {
-  struct yamlet_configuration *init_config;
+  atexit(unload_cyaml);
+  atexit(unload_shared_buffer);
 
   #ifdef DEBUG
   puts("Loading "INIT_FNAME"...");
@@ -53,16 +56,16 @@ int main(void) {
   #ifdef DEBUG
   printf("Entering main server loop...\n");
   #endif
-  while (1) {
+  int i = 0;
+  while (i++ < 20) {
     // sleep for .5 s and write to the shared buffer the time and a hello world message
     usleep(500000);
+    printf("Main loop iteration %d\n", i);
     sprintf(shared_memory_buffer, "Hello, world! Current time: %ld\n", time(NULL));
     #ifdef DEBUG
-    printf("Updated shared buffer: %s", (char *)shared_memory_buffer);
+    //printf("Updated shared buffer: %s", (char *)shared_memory_buffer);
     #endif
   }
-
-  unload_shared_buffer();
   return 0;
 }
 
@@ -76,11 +79,18 @@ void load_shared_buffer(void) {
     exit(1);
   }
 
-  shared_memory_buffer = mmap(NULL, sizeof(struct yamlet_configuration), PROT_READ | PROT_WRITE, MAP_SHARED, shm_fd, 0);
+  shared_memory_buffer = mmap(NULL, SHM_SIZE, PROT_READ | PROT_WRITE, MAP_SHARED, shm_fd, 0);
   if (shared_memory_buffer == MAP_FAILED) {
     fprintf(stderr, "Failed to map shared memory segment: %s\n", strerror(errno));
     exit(1);
   }
+}
+
+void unload_cyaml(void) {
+  #ifdef DEBUG
+  puts("Unloading cyaml...");
+  #endif
+  free(init_config);
 }
 
 void unload_shared_buffer(void) {
@@ -111,8 +121,6 @@ void load_modules(void) {
   FILE *input = fopen("modules.yml", "rb");
   yaml_parser_set_input_file(&parser, input);
 
-
-
   int r_type = 2;
   typedef struct {
     char *module_name;
@@ -127,15 +135,9 @@ void load_modules(void) {
 
     if (event.type == YAML_SCALAR_EVENT) {
       if (r_type % 2 == 0) {
-        #ifdef DEBUG
-        printf("%s: ", event.data.scalar.value);
-        #endif
         current_module.module_name = strdup((char *)event.data.scalar.value);
         r_type++;
       } else {
-        #ifdef DEBUG
-        printf("%s\n", event.data.scalar.value);
-        #endif
         current_module.init_command = strdup((char *)event.data.scalar.value);
         // execute the init command to run the module
         #ifdef DEBUG
@@ -147,7 +149,10 @@ void load_modules(void) {
           exit(1);
           return;
         } else if (pid == 0) {
-          execv("/bin/sh", (char *const []){ "sh", "-c", current_module.init_command, NULL });
+          if (execv("/bin/sh", (char *const []){ "sh", "-c", current_module.init_command, NULL }) == -1) {
+            fprintf(stderr, "Failed to execute module %s: %s\n", current_module.module_name, strerror(errno));
+            continue;
+          }
           memset(&current_module, 0, sizeof(yamlet_module));
         }
         else r_type = 2;
